@@ -4,9 +4,11 @@ from fastapi import FastAPI
 from app.database import create_all_tables
 from app.api.sync import router as sync_router
 from app.api.tagger import router as tagger_router
+from app.api.profile import router as profile_router
 from app.scheduler.jobs import start_scheduler, stop_scheduler
 from app.services.sync_service import run_full_sync
 from app.services.tagger_service import run_tagger
+from app.services.profile_service import run_profiler
 
 app = FastAPI(
     title="Swabi AI Recommendation Service",
@@ -16,11 +18,13 @@ app = FastAPI(
 
 app.include_router(sync_router)
 app.include_router(tagger_router)
+app.include_router(profile_router)
 
 
-def sync_and_tag():
+def sync_tag_profile():
     run_full_sync()
     run_tagger()
+    run_profiler()
 
 
 @app.on_event("startup")
@@ -29,8 +33,8 @@ async def startup_event():
     create_all_tables()
     print("Database ready.")
     start_scheduler()
-    asyncio.create_task(asyncio.to_thread(sync_and_tag))
-    print("Initial sync + tagging started in background.")
+    asyncio.create_task(asyncio.to_thread(sync_tag_profile))
+    print("Initial pipeline started in background.")
 
 
 @app.on_event("shutdown")
