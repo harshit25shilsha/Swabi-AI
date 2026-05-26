@@ -95,7 +95,7 @@ def save_user_profile(user_id: int , profile: dict, db: Session):
         existing.activity_scores = json.dumps(profile["activity_scores"])
         existing.purpose_scores = json.dumps(profile["purpose_scores"])
         existing.season_scores = json.dumps(profile["season_scores"])
-        existing.budget_pref = json.dumps(profile["budget_pref"])
+        existing.budget_pref = (profile["budget_pref"])
         existing.updated_at = datetime.now()
     
     else:

@@ -1,16 +1,11 @@
 # app/scheduler/jobs.py
+import threading
+
 from apscheduler.schedulers.background import BackgroundScheduler
-from app.services.tagger_service import run_tagger
-from app.services.sync_service import run_full_sync
-from app.services.profile_service import run_profiler
+from app.core.pipeline import run_pipeline
 
 scheduler = BackgroundScheduler()
 _started = False
-
-def sync_tag_profile():
-    run_full_sync()
-    run_tagger()
-    run_profiler()
 
 
 def start_scheduler():
@@ -20,7 +15,7 @@ def start_scheduler():
         return
 
     scheduler.add_job(
-        sync_tag_profile,
+        lambda: run_pipeline("SCHEDULER"),
         trigger="interval",
         hours=3,
         id="full_pipeline",
@@ -30,7 +25,7 @@ def start_scheduler():
     )
     scheduler.start()
     _started = True
-    print("[SCHEDULER] Started - sync + profile runs every 3 hours.")
+    print("[SCHEDULER] Started - full pipeline runs every 3 hours.")
 
 
 def stop_scheduler():

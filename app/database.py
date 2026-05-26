@@ -14,6 +14,6 @@ def get_db():
         db.close()
 
 def create_all_tables():
-    from app.models import package, activity, user, booking, profile, event
+    from app.models import package, activity, user, booking, profile, event, preference
     Base.metadata.create_all(bind=engine)
     print("All tables created.")

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models.package import PackageTags
 from app.services.tagger_service import run_tagger
+from app.core.pipeline import run_tagger_only
 
 router = APIRouter(prefix="/tagger",tags=["TAGGER"])
 
@@ -12,16 +13,15 @@ router = APIRouter(prefix="/tagger",tags=["TAGGER"])
 
 @router.post("/run")
 async def trigger_tagger():
-    result = await asyncio.to_thread(run_tagger)
+    result = await asyncio.to_thread(run_tagger_only)
     if not result.get("success"):
         raise HTTPException(status_code=500, detail=result["message"])
     return {
-        "status": "success",
-        "message": result["message"],
-        "tagged_count": result.get("tagged_count", 0),
-        "failed_count": result.get("failed_count", 0),
+        "status":        "success",
+        "message":       result["message"],
+        "tagged_count":  result.get("tagged_count", 0),
+        "failed_count":  result.get("failed_count", 0),
     }
-
 @router.get("/tags/{package_id}")
 def get_package_tags(package_id: int):
     db: Session = SessionLocal()

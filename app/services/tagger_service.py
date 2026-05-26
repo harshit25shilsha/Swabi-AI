@@ -1,23 +1,32 @@
 import json
 from datetime import datetime
 from keybert import KeyBERT
-from sqlalchemy .orm import Session
+from sqlalchemy.orm import Session
+
 from app.database import SessionLocal
 from app.models.package import PackageCache, PackageTags
-
-# Load KeyBERT model 
-
-# kw_model = KeyBERT()
 from sentence_transformers import SentenceTransformer
 
-sentence_model = SentenceTransformer("all-MiniLM-L6-v2")
-kw_model = KeyBERT(model=sentence_model)
+MODEL_NAME = "all-MiniLM-L6-v2"
+kw_model: KeyBERT | None = None
 
 def log(msg:str):
     print(f"[TAGGER {datetime.now().strftime('%H:%M:%S')}] {msg}")
-    
-def get_db()->Session:
+
+
+def get_db() -> Session:
     return SessionLocal()
+
+def get_keyword_model() -> KeyBERT:
+    global kw_model
+
+    if kw_model is None:
+        log(f"Loading keyword model: {MODEL_NAME}")
+        sentence_model = SentenceTransformer(MODEL_NAME)
+        kw_model = KeyBERT(model=sentence_model)
+        log("Keyword model loaded.")
+
+    return kw_model
 
 
 # KEYWORD -> TAG MAPPINGS
@@ -175,7 +184,7 @@ def build_package_text(package: PackageCache) -> tuple[str, list[str], list[str]
     return text, categories, best_times
 # MATCH KEYWORDS -> TAGS
 
-def match_keywords_to_tags(keywords: list[str], mapping: dict)-> list[str]:
+def match_keywords_to_tags(keywords: list[str], mapping: dict) -> list[str]:
     matched = set()
     kw_lower = [k.lower() for k in keywords]
     
@@ -195,7 +204,7 @@ def infer_budget(price: float) -> str:
     return "luxury"
 
 
-def infer_duration(days: int)-> str:
+def infer_duration(days: int) -> str:
     if days <=3:
         return "short_trip"
     elif days <=6:
@@ -206,15 +215,16 @@ def infer_duration(days: int)-> str:
 
 # TAG ONE PACKAGE 
 
-def tag_package(package: PackageCache)-> dict:
-    text,categories,best_times = build_package_text(package)
-    
-    #KeyBERT keyword extraction
-    raw_kwywords = kw_model.extract_keywords(
+def tag_package(package: PackageCache) -> dict:
+    text, categories, best_times = build_package_text(package)
+    keyword_model = get_keyword_model()
+
+    # KeyBERT keyword extraction
+    raw_kwywords = keyword_model.extract_keywords(
         text,
-        keyphrase_ngram_range = (1,2),
+        keyphrase_ngram_range=(1, 2),
         stop_words="english",
-        top_n = 15
+        top_n=15
     )
     keywords = [kw for kw, score in raw_kwywords]
     
@@ -247,13 +257,15 @@ def tag_package(package: PackageCache)-> dict:
     
 # TAG ALL PACKAGES
 
-def run_tagger()->dict:
+def run_tagger() -> dict:
     log("TAGGER STARTED")
     db = get_db()
     tagged_count = 0
     failed_count = 0
-    
+
     try:
+        get_keyword_model()
+
         packages = db.query(PackageCache).filter(
             PackageCache.package_status == "TRUE"
         ).all()
@@ -301,11 +313,11 @@ def run_tagger()->dict:
                 failed_count += 1
                 log(f"Package {package.package_id} tagging failed: {e}")
     
-    except Exception as e: 
+    except Exception as e:
         db.rollback()
         msg = f"Tagger Error: {e}"
         log(msg)
-        return {"success": False,"message":msg}
+        return {"success": False, "message": msg}
 
     finally:
         db.close()

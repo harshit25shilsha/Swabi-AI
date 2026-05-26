@@ -11,6 +11,7 @@ from app.models.activity import ActivityCache
 from app.models.booking import BookingHistory
 from app.models.package import PackageCache
 from app.models.user import UserCache
+from app.models.preference import UserPreference
 
 
 def get_db() -> Session:
@@ -377,6 +378,82 @@ def sync_bookings() -> dict:
         db.close()
 
 
+def sync_preferences() -> dict:
+    log("Starting preferences sync...")
+    db        = get_db()
+    new_count     = 0
+    updated_count = 0
+
+    try:
+        url = f"{base_url()}/travel/get_all_travel_preferences"
+        response = httpx.get(url, timeout=30)
+        response.raise_for_status()
+
+        preferences = response.json()
+
+        if not isinstance(preferences, list):
+            preferences = preferences.get("data", [])
+
+        for p in preferences:
+            user_id = p.get("userId")
+            if not user_id:
+                continue
+
+            existing = db.query(UserPreference).filter(
+                UserPreference.user_id == user_id
+            ).first()
+
+            activity_types = json.dumps(p.get("activity_types", []))
+            place_types    = json.dumps(p.get("place_types", []))
+            season         = json.dumps(p.get("season", []))
+            trip_purposes  = json.dumps(p.get("trip_purposes", []))
+            trip_duration  = json.dumps(p.get("trip_duration", []))
+            countries      = json.dumps(p.get("countries", []))
+
+            if not existing:
+                db.add(UserPreference(
+                    user_id        = user_id,
+                    activity_types = activity_types,
+                    place_types    = place_types,
+                    season         = season,
+                    trip_purposes  = trip_purposes,
+                    trip_duration  = trip_duration,
+                    countries      = countries,
+                ))
+                new_count += 1
+            else:
+                existing.activity_types = activity_types
+                existing.place_types    = place_types
+                existing.season         = season
+                existing.trip_purposes  = trip_purposes
+                existing.trip_duration  = trip_duration
+                existing.countries      = countries
+                updated_count += 1
+
+        db.commit()
+        msg = f"Preferences done - {new_count} new, {updated_count} updated."
+        log(msg)
+        return {"success": True, "message": msg}
+
+    except httpx.HTTPError as e:
+        db.rollback()
+        msg = f"Preferences sync HTTP error: {e}"
+        log(msg)
+        return {"success": False, "message": msg}
+
+    except Exception as e:
+        db.rollback()
+        msg = f"Preferences sync failed: {e}"
+        log(msg)
+        return {"success": False, "message": msg}
+
+    finally:
+        db.close()
+        
+
+
+
+
 def run_full_sync() -> dict:
     log("FULL SYNC STARTED")
 
@@ -385,6 +462,7 @@ def run_full_sync() -> dict:
         "activities": sync_activities(),
         "users": sync_users(),
         "bookings": sync_bookings(),
+        "preferences": sync_preferences(),
     }
 
     all_success = all(result["success"] for result in results.values())
