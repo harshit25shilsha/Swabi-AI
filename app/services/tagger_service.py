@@ -7,7 +7,11 @@ from app.models.package import PackageCache, PackageTags
 
 # Load KeyBERT model 
 
-kw_model = KeyBERT()
+# kw_model = KeyBERT()
+from sentence_transformers import SentenceTransformer
+
+sentence_model = SentenceTransformer("all-MiniLM-L6-v2")
+kw_model = KeyBERT(model=sentence_model)
 
 def log(msg:str):
     print(f"[TAGGER {datetime.now().strftime('%H:%M:%S')}] {msg}")
@@ -32,6 +36,7 @@ PLACE_TYPE_KEYWORDS = {
     "urban":      ["city", "urban", "market", "bazaar", "street", "food",
                    "nightlife", "shopping", "restaurant"],
     "waterpark":  ["waterpark", "water park", "slides", "pool", "aqua"],
+    "nature":     ["nature", "eco", "green", "scenic", "landscape", "wilderness"],
     
     }
 
@@ -53,6 +58,8 @@ ACTIVITY_TAG_KEYWORDS = {
     "sightseeing":    ["sightseeing", "tourist", "visit", "explore", "landmark", "gem", "hidden"],
     "food_tour":      ["food", "cuisine", "restaurant", "eating", "dukan", "street food"],
     "religious":      ["darshan", "puja", "prayer", "temple", "pilgrimage", "spiritual"],
+    "welness":        ["welness", "spa", "yoga", "meditation", "ayurvedic", "retreat", "healing"],
+    "nightlife":      ["nightlife", "pub", "bar", "club", "party", "drinks", "crawl"],
 }
 
 
@@ -69,16 +76,46 @@ TRIP_PURPOSE_KEYWORDS = {
 
 # Direct map from activityCategory API field
 CATEGORY_TO_ACTIVITY_TAG = {
-    "Adventure":      ["adventure"],
-    "Swimming":       ["swimming", "water_sports"],
-    "Hiking":         ["hiking", "trekking"],
-    "Camping":        ["camping"],
-    "Cycling":        ["cycling"],
-    "Scuba Diving":   ["scuba_diving", "water_sports"],
-    "Snorkeling":     ["snorkeling", "water_sports"],
-    "Kayaking":       ["kayaking", "water_sports"],
-    "Paragliding":    ["paragliding", "adventure"],
-    "Mountaineering": ["mountaineering", "adventure"],
+    # Adventure
+    "Trekking & Hiking":               ["trekking", "hiking", "adventure"],
+    "Camping":                         ["camping"],
+    "Paragliding & Skydiving":         ["paragliding", "adventure"],
+    "Mountaineering & Rock Climbing":  ["mountaineering", "trekking", "adventure"],
+    "Cycling & Biking Tours":          ["cycling"],
+    "Ziplining & Bungee Jumping":      ["adventure"],
+    
+    # Water Sports
+    "Scuba Diving & Snorkeling":       ["scuba_diving", "snorkeling", "water_sports"],
+    "Kayaking & Canoeing":             ["kayaking", "water_sports"],
+    "White Water Rafting":             ["water_sports", "adventure"],
+    "Jet Skiing & Parasailing":        ["water_sports", "adventure"],
+    "Surfing & Windsurfing":           ["water_sports", "adventure"],
+    "Cruises & Houseboat Stays":       ["water_sports"],
+
+    # Cultural & Historical
+    "Monument & Heritage Tours":       ["sightseeing", "historical", "cultural"],
+    "Day City Tours":                  ["sightseeing", "urban"],
+    "Museums & Art Galleries":         ["historical", "cultural"],
+    "Religious & Pilgrim Tours":       ["religious"],
+    "Walking & Photography Tours":     ["sightseeing", "cultural"],
+
+    # Nature & Wildlife
+    "Jungle Safari":                   ["wildlife", "adventure", "forest"],
+    "Bird Watching Tours":             ["wildlife", "nature"],
+    "Nature Walks & Eco Tours":        ["nature", "hiking"],
+    "Camping & Glamping":              ["camping"],
+
+    # Entertainment & Leisure
+    "Theme & Water Parks":             ["waterpark"],
+    "Cultural Shows & Dance Performances": ["cultural"],
+    "Food Walks & Cooking Classes":    ["food_tour"],
+    "Wine Tasting Tours":              ["food_tour", "luxury"],
+    "Nightlife & Pub Crawls":          ["nightlife", "urban"],
+
+    # Wellness
+    "Spa & Ayurvedic Massages":        ["wellness", "luxury"],
+    "Yoga & Meditation Retreats":      ["wellness", "religious"],
+    "Hot Springs & Wellness Stays":    ["wellness"],
 }
  
 # Direct map from bestTimeToVisit API field
