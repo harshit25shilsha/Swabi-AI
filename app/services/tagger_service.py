@@ -273,7 +273,7 @@ def match_text_to_tags(text: str, mapping: dict[str, list[str]]) -> set[str]:
 
 def infer_budget(price: float) -> str:
     if price <= 5000:
-        return "budget"
+        return "low_range"
     if price <= 20000:
         return "mid_range"
     return "luxury"

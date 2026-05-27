@@ -7,6 +7,7 @@ from app.api.sync import router as sync_router
 from app.api.tagger import router as tagger_router
 from app.api.profile import router as profile_router
 from app.api.preference import router as preference_router
+from app.api.recommendations import router as recommendations_router
 from app.scheduler.jobs import start_scheduler, stop_scheduler
 from app.core.pipeline import run_pipeline
 
@@ -21,6 +22,7 @@ app.include_router(sync_router)
 app.include_router(tagger_router)
 app.include_router(profile_router)
 app.include_router(preference_router)
+app.include_router(recommendations_router)
 
 
 @app.on_event("startup")
