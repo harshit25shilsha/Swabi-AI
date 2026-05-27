@@ -9,7 +9,7 @@ from app.models.profile import UserInterestProfile
 from app.models.user import UserCache
 
 def log(msg:str):
-    print(f"[PROFILE {datetime.now().strftime('%H:%M:%S:')}] {msg}")
+    print(f"[PROFILE {datetime.now().strftime('%H:%M:%S')}] {msg}")
     
 def get_db()->Session:
         return SessionLocal()
@@ -43,7 +43,9 @@ def build_user_profile(user_id: int, db: Session) -> dict | None:
  
     if not bookings:
         return None
- 
+
+    used_booking_count = 0
+
     for booking in bookings:
         if booking.booking_status == "CANCELLED":
             continue
@@ -54,6 +56,8 @@ def build_user_profile(user_id: int, db: Session) -> dict | None:
  
         if not tags:
             continue
+
+        used_booking_count += 1
  
         place_types   = json.loads(tags.place_types    or "[]")
         activity_tags = json.loads(tags.activity_tags  or "[]")
@@ -73,6 +77,12 @@ def build_user_profile(user_id: int, db: Session) -> dict | None:
         max(budget_counts, key=budget_counts.get)
         if budget_counts else None
     )
+
+    if used_booking_count == 0:
+        return None
+
+    if not any([place_scores, activity_scores, purpose_scores, season_scores, budget_pref]):
+        return None
  
     return {
         "place_scores":    place_scores,
@@ -128,7 +138,7 @@ def run_profiler()->dict:
                 
                 if not profile:
                     skipped_count+=1
-                    log(f"User {user.user_id} - no bookings, skipped.")
+                    log(f"User {user.user_id} - no usable bookings, skipped.")
                     continue
                 save_user_profile(user.user_id, profile, db)
                 profiled_count+=1
@@ -146,14 +156,14 @@ def run_profiler()->dict:
                 log(f"User {user.user_id} failed: {e}")
 
     except Exception as e:
-        msg = f" Profiler error: {e}"
+        msg = f"Profiler error: {e}"
         log(msg)
         return {"success": False, "message":msg}
     
     finally:
         db.close()
         
-    msg = f"Profiller done - {profiled_count} profiled, {skipped_count} sksipped."
+    msg = f"Profiler done - {profiled_count} profiled, {skipped_count} skipped."
     log(msg)
     return {
         "success": True,

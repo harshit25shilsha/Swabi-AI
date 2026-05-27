@@ -40,6 +40,14 @@ def safe_int(val, default=0) -> int:
         return default
 
 
+def normalize_json_list(values) -> str:
+    if values is None:
+        values = []
+    if not isinstance(values, list):
+        values = [values]
+    return json.dumps(values, ensure_ascii=False, sort_keys=True)
+
+
 def sync_packages() -> dict:
     log("Starting package sync...")
     db = get_db()
@@ -403,12 +411,12 @@ def sync_preferences() -> dict:
                 UserPreference.user_id == user_id
             ).first()
 
-            activity_types = json.dumps(p.get("activity_types", []))
-            place_types    = json.dumps(p.get("place_types", []))
-            season         = json.dumps(p.get("season", []))
-            trip_purposes  = json.dumps(p.get("trip_purposes", []))
-            trip_duration  = json.dumps(p.get("trip_duration", []))
-            countries      = json.dumps(p.get("countries", []))
+            activity_types = normalize_json_list(p.get("activity_types", []))
+            place_types    = normalize_json_list(p.get("place_types", []))
+            season         = normalize_json_list(p.get("season", []))
+            trip_purposes  = normalize_json_list(p.get("trip_purposes", []))
+            trip_duration  = normalize_json_list(p.get("trip_duration", []))
+            countries      = normalize_json_list(p.get("countries", []))
 
             if not existing:
                 db.add(UserPreference(
@@ -422,13 +430,25 @@ def sync_preferences() -> dict:
                 ))
                 new_count += 1
             else:
-                existing.activity_types = activity_types
-                existing.place_types    = place_types
-                existing.season         = season
-                existing.trip_purposes  = trip_purposes
-                existing.trip_duration  = trip_duration
-                existing.countries      = countries
-                updated_count += 1
+                has_changes = any(
+                    [
+                        existing.activity_types != activity_types,
+                        existing.place_types != place_types,
+                        existing.season != season,
+                        existing.trip_purposes != trip_purposes,
+                        existing.trip_duration != trip_duration,
+                        existing.countries != countries,
+                    ]
+                )
+
+                if has_changes:
+                    existing.activity_types = activity_types
+                    existing.place_types    = place_types
+                    existing.season         = season
+                    existing.trip_purposes  = trip_purposes
+                    existing.trip_duration  = trip_duration
+                    existing.countries      = countries
+                    updated_count += 1
 
         db.commit()
         msg = f"Preferences done - {new_count} new, {updated_count} updated."
