@@ -12,6 +12,7 @@ from app.models.booking import BookingHistory
 from app.models.package import PackageCache
 from app.models.user import UserCache
 from app.models.preference import UserPreference
+from app.models.event import UserEvent
 
 
 def get_db() -> Session:
@@ -469,10 +470,164 @@ def sync_preferences() -> dict:
 
     finally:
         db.close()
+
+# SYNC PACKAGE VIEW EVENTS 
+
+def sync_package_view_events() -> dict:
+    log("Starting package view events sync...")
+    db = get_db()
+    new_count = 0
+    try:
+        from datetime import datetime as dt
+        url = f"{base_url()}/package/get_all_package_view_logs"
+        response = httpx.get(url, timeout=30)
+        response.raise_for_status()
         
+        data = response.json()
+        events = data.get("data", [])
+        
+        if not isinstance(events, list):
+            events = []
+        
+        for e in events:
+            event_id  = e.get("eventId")
+            if not event_id:
+                continue
+            # use eventId as unique key - never insert dupliates
+            existing = db.query(UserEvent).filter(
+                UserEvent.event_id == event_id
+            ).first()
+            
+            if existing:
+                continue
+            
+            # parse createdAt
+            created_at = None
+            try:
+                created_at = dt.strptime(
+                    e.get("createdAt","")[:19], "%Y-%m-%d %H:%M:%S"
+                )
+            except Exception:
+                pass
+            
+            db.add(UserEvent(
+                event_id = event_id,
+                user_id = e.get("userId"),
+                event_type = "package_viewed",
+                package_id =e.get("packageId"),
+                activity_ids = json.dumps(e.get("activityIds",[])),
+                country = None,
+                state = None,
+                search_date = None,
+                created_at = created_at
+            ))
+            new_count += 1
+        db.commit()
+        msg = f" Package view events done - {new_count} new."
+        log(msg)
+        return {"success": True, "message": msg}
+        
+    except httpx.HTTPError as e:
+        db.rollback()
+        msg = f"Package view events HTTP error: {e}"
+        log(msg)
+        return {"success": False, "message": msg}
+    
+    except Exception as e:
+        db.rollback()
+        msg = f"Package view events sync failed: {e}"
+        log(msg)
+        return {"success": False, "message": msg}
+    
+    finally:
+        db.close()
 
 
 
+# SYNC SEARCH EVENTS
+def sync_search_events()-> dict:
+    log("Starting search events sync...")
+    db = get_db()
+    
+    new_count = 0
+    try:
+        from datetime import datetime as dt
+        url = f"{base_url()}/package/get_all_package_search_logs"
+        response = httpx.get(url, timeout=30)
+        response.raise_for_status()
+        
+        data = response.json()
+        events = data.get("data", [])
+        
+        if not isinstance(events, list):
+            events = []
+            
+        for e in events:
+            log_id = e.get("id")
+            if not log_id:
+                continue
+            
+            # Use "search_{id}" as unique event_id to avoid duplicates
+            event_id = f"search_{log_id}"
+            
+            existing = db.query(UserEvent).filter(
+                UserEvent.event_id == event_id
+            ).first()
+            
+            if existing:
+                continue
+            
+            created_at = None
+            try:
+                created_at = dt.strptime(
+                    e.get("createdAt","")[:19], "%Y-%m-%d %H:%M:%S"
+                )
+            except Exception:
+                pass
+            
+            db.add(UserEvent(
+                event_id = event_id,
+                user_id = e.get("userId"),
+                event_type = "search_performed",
+                package_id = None,
+                activity_ids = None,
+                country = e.get("country") or None,
+                state = e.get("state") or None,
+                search_date = e.get("searchDate") or None,
+                created_at = created_at
+            ))
+            new_count+=1
+        db.commit()
+        msg = f" Search events done -{new_count} new."
+        log(msg)
+        return {"success": True, "message": msg}
+    
+    except httpx.HTTPError as e:
+        db.rollback()
+        msg = f"Search events HTTP error: {e}"
+        log(msg)
+        return {"success": False, "message": msg}
+    
+    except Exception as e:
+        db.rollback()
+        msg = f"Search events sync failed: {e}"
+        log(msg)
+        return {"success": False, "message": msg}
+    
+    finally:
+        db.close()
+         
+
+def sync_all_events()-> dict:
+    view_result = sync_package_view_events()
+    search_result = sync_search_events()
+    
+    all_success = view_result["success"] and search_result["success"]
+    return {
+        "success": all_success,
+        "package_views": view_result,
+        "search_events": search_result,
+    }
 
 def run_full_sync() -> dict:
     log("FULL SYNC STARTED")
@@ -483,6 +638,8 @@ def run_full_sync() -> dict:
         "users": sync_users(),
         "bookings": sync_bookings(),
         "preferences": sync_preferences(),
+        "package_views": sync_package_view_events(),
+        "search_events": sync_search_events(),
     }
 
     all_success = all(result["success"] for result in results.values())
