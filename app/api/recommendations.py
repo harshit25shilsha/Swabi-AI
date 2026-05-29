@@ -72,4 +72,56 @@ def trending_packages(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
- 
+
+
+# Full object endpoints for debugging and development purposes
+
+@router.get("/packages/full")
+def recommend_packages_full(
+    user_id: int = Query(..., description="User ID to get recommendations for"),
+    limit:   int = Query(10,  description="Number of recommendations to return"),
+):
+    try:
+        from app.services.recommendation_service import get_recommended_packages_full
+        results = get_recommended_packages_full(user_id, limit)
+        return {
+            "user_id": user_id,
+            "total":   len(results),
+            "recommendations": results,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/similar/full")
+def similar_packages_full(
+    package_id: int = Query(..., description="Package ID to find similar packages for"),
+    limit:      int = Query(6,   description="Number of similar packages to return"),
+):
+
+    try:
+        from app.services.recommendation_service import get_similar_packages_full
+        results = get_similar_packages_full(package_id, limit)
+        return {
+            "package_id":      package_id,
+            "total":           len(results),
+            "similar_packages": results,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/trending/full")
+def trending_packages_full(
+    limit: int = Query(10, description="Number of trending packages to return"),
+):
+   
+    try:
+        from app.services.recommendation_service import get_trending_packages_full
+        results = get_trending_packages_full(limit)
+        return {
+            "total":            len(results),
+            "trending_packages": results,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

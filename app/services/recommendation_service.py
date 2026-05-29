@@ -339,3 +339,199 @@ def _get_profile(user_id: int, db: Session) -> dict | None:
         "season_scores":   json.loads(profile.season_scores   or "{}"),
         "budget_pref":     profile.budget_pref,
     } 
+    
+# FULL PACKAGE RECOMMENDATIONS WITH RAW JAVA API RESPONSE INCLUDED
+
+def get_recommended_packages_full(user_id: int, limit: int = 10) -> list[dict]:
+    db = get_db()
+    try:
+        profile     = _get_profile(user_id, db)
+        preferences = get_user_preferences(user_id, db)
+
+        all_tags = db.query(PackageTags).all()
+        scored   = []
+
+        for tags in all_tags:
+            package = db.query(PackageCache).filter(
+                PackageCache.package_id == tags.package_id,
+                PackageCache.package_status == "TRUE"
+            ).first()
+
+            if not package:
+                continue
+
+            score = score_package(tags, profile, preferences)
+            raw   = json.loads(package.raw_json or "{}")
+
+            scored.append({
+                # Recommendation metadata
+                "score":           score,
+                "place_types":     json.loads(tags.place_types    or "[]"),
+                "activity_tags":   json.loads(tags.activity_tags  or "[]"),
+                "season_tags":     json.loads(tags.season_tags    or "[]"),
+                "duration_type":   tags.duration_type,
+                "budget_category": tags.budget_category,
+
+                # Full package object exactly as Java API returns
+                "packageId":               raw.get("packageId"),
+                "packageName":             raw.get("packageName"),
+                "country":                 raw.get("country"),
+                "state":                   raw.get("state"),
+                "noOfDays":                raw.get("noOfDays"),
+                "totalPrice":              raw.get("totalPrice"),
+                "packageStatus":           raw.get("packageStatus"),
+                "packageImageUrl":         raw.get("packageImageUrl", []),
+                "packageActivities":       raw.get("packageActivities", []),
+                "packageDiscountedAmount": raw.get("packageDiscountedAmount"),
+                "currency":                raw.get("currency"),
+                "vendor":                  raw.get("vendor"),
+                "createdDate":             raw.get("createdDate"),
+                "modifiedDate":            raw.get("modifiedDate"),
+            })
+
+        scored.sort(key=lambda x: x["score"], reverse=True)
+        return scored[:limit]
+
+    finally:
+        db.close()
+        
+def get_similar_packages_full(package_id: int, limit: int = 6) -> list[dict]:
+    db = get_db()
+    try:
+        source_tags = db.query(PackageTags).filter(
+            PackageTags.package_id == package_id
+        ).first()
+
+        if not source_tags:
+            return []
+
+        source_place    = set(json.loads(source_tags.place_types    or "[]"))
+        source_activity = set(json.loads(source_tags.activity_tags  or "[]"))
+        source_purpose  = set(json.loads(source_tags.trip_purpose   or "[]"))
+        source_all      = source_place | source_activity | source_purpose
+
+        all_tags = db.query(PackageTags).filter(
+            PackageTags.package_id != package_id
+        ).all()
+
+        scored = []
+
+        for tags in all_tags:
+            package = db.query(PackageCache).filter(
+                PackageCache.package_id == tags.package_id,
+                PackageCache.package_status == "TRUE"
+            ).first()
+
+            if not package:
+                continue
+
+            candidate_place    = set(json.loads(tags.place_types    or "[]"))
+            candidate_activity = set(json.loads(tags.activity_tags  or "[]"))
+            candidate_purpose  = set(json.loads(tags.trip_purpose   or "[]"))
+            candidate_all      = candidate_place | candidate_activity | candidate_purpose
+
+            if not source_all and not candidate_all:
+                similarity = 0.0
+            else:
+                intersection = len(source_all & candidate_all)
+                union        = len(source_all | candidate_all)
+                similarity   = round(intersection / union, 3) if union > 0 else 0.0
+
+            if similarity > 0:
+                raw = json.loads(package.raw_json or "{}")
+                scored.append({
+                    # Similarity metadata
+                    "similarity":      similarity,
+                    "place_types":     list(candidate_place),
+                    "activity_tags":   list(candidate_activity),
+                    "duration_type":   tags.duration_type,
+                    "budget_category": tags.budget_category,
+
+                    # Full package object
+                    "packageId":               raw.get("packageId"),
+                    "packageName":             raw.get("packageName"),
+                    "country":                 raw.get("country"),
+                    "state":                   raw.get("state"),
+                    "noOfDays":                raw.get("noOfDays"),
+                    "totalPrice":              raw.get("totalPrice"),
+                    "packageStatus":           raw.get("packageStatus"),
+                    "packageImageUrl":         raw.get("packageImageUrl", []),
+                    "packageActivities":       raw.get("packageActivities", []),
+                    "packageDiscountedAmount": raw.get("packageDiscountedAmount"),
+                    "currency":                raw.get("currency"),
+                    "vendor":                  raw.get("vendor"),
+                    "createdDate":             raw.get("createdDate"),
+                    "modifiedDate":            raw.get("modifiedDate"),
+                })
+
+        scored.sort(key=lambda x: x["similarity"], reverse=True)
+        return scored[:limit]
+
+    finally:
+        db.close()
+
+
+def get_trending_packages_full(limit: int = 10) -> list[dict]:
+    db = get_db()
+    try:
+        from app.models.booking import BookingHistory
+        from sqlalchemy import func
+
+        booking_counts = (
+            db.query(
+                BookingHistory.package_id,
+                func.count(BookingHistory.booking_id).label("booking_count")
+            )
+            .filter(BookingHistory.booking_status != "CANCELLED")
+            .group_by(BookingHistory.package_id)
+            .order_by(func.count(BookingHistory.booking_id).desc())
+            .limit(limit)
+            .all()
+        )
+
+        trending = []
+        for row in booking_counts:
+            package = db.query(PackageCache).filter(
+                PackageCache.package_id == row.package_id,
+                PackageCache.package_status == "TRUE"
+            ).first()
+
+            if not package:
+                continue
+
+            tags = db.query(PackageTags).filter(
+                PackageTags.package_id == row.package_id
+            ).first()
+
+            raw = json.loads(package.raw_json or "{}")
+
+            trending.append({
+                # Trending metadata
+                "booking_count":   row.booking_count,
+                "place_types":     json.loads(tags.place_types    or "[]") if tags else [],
+                "activity_tags":   json.loads(tags.activity_tags  or "[]") if tags else [],
+                "duration_type":   tags.duration_type   if tags else None,
+                "budget_category": tags.budget_category if tags else None,
+
+                # Full package object
+                "packageId":               raw.get("packageId"),
+                "packageName":             raw.get("packageName"),
+                "country":                 raw.get("country"),
+                "state":                   raw.get("state"),
+                "noOfDays":                raw.get("noOfDays"),
+                "totalPrice":              raw.get("totalPrice"),
+                "packageStatus":           raw.get("packageStatus"),
+                "packageImageUrl":         raw.get("packageImageUrl", []),
+                "packageActivities":       raw.get("packageActivities", []),
+                "packageDiscountedAmount": raw.get("packageDiscountedAmount"),
+                "currency":                raw.get("currency"),
+                "vendor":                  raw.get("vendor"),
+                "createdDate":             raw.get("createdDate"),
+                "modifiedDate":            raw.get("modifiedDate"),
+            })
+
+        return trending
+
+    finally:
+        db.close()
+        
